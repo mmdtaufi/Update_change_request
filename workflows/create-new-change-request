@@ -1,0 +1,49 @@
+name: ServiceNow Change Request Automation
+
+# Trigger the workflow on pull request events and push to the main branch
+on:
+  pull_request:
+    types: [opened, closed]
+  push:
+    branches:
+      - main
+
+jobs:
+  create-change-request:
+    runs-on: ubuntu-latest
+
+    steps:
+    # Step 1: Checkout repository code
+    - name: Checkout code
+      uses: actions/checkout@v2
+
+    # Step 2: Send change request to ServiceNow
+    - name: Create ServiceNow Change Request
+      env:
+        SNOW_INSTANCE_URL: ${{ secrets.SNOW_INSTANCE_URL }}
+        SNOW_USER: ${{ secrets.SNOW_USER }}
+        SNOW_PASSWORD: ${{ secrets.SNOW_PASSWORD }}
+      run: |
+        # Check if this is a pull request creation or merge
+        if [[ "$GITHUB_EVENT_NAME" == "pull_request" && "$GITHUB_EVENT_ACTION" == "opened" ]]; then
+          export CHANGE_TYPE="New PR"
+        elif [[ "$GITHUB_EVENT_NAME" == "pull_request" && "$GITHUB_EVENT_ACTION" == "closed" ]]; then
+          export CHANGE_TYPE="Merged PR"
+        else
+          export CHANGE_TYPE="Code Push"
+        fi
+
+        # Construct the change request data payload
+        export DATA='{
+          "short_description": "Automated Change Request from GitHub Actions - Qamar",
+          "description": "'"$CHANGE_TYPE"' in GitHub repository \n '"$GITHUB_REPOSITORY"' \n '"$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/pull/$GITHUB_REF"'",
+          "u_change_reason": "Automated change triggered by GitHub Actions"
+        }'
+
+        # Send a POST request to ServiceNow to create the change request
+        curl -X POST "$SNOW_INSTANCE_URL/api/now/table/change_request" \
+        --header "Accept: application/json" \
+        --header "Content-Type: application/json" \
+        --user "$SNOW_USER:$SNOW_PASSWORD" \
+        --data "$DATA" \
+        --fail || echo "Failed to create change request"
